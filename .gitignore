@@ -1,3 +1,4 @@
+.DS_Store
 .idea
 *.iml
 ispconfig3_account/config/config.inc.php
