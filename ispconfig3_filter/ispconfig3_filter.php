@@ -192,32 +192,38 @@ class ispconfig3_filter extends rcube_plugin
 
         try {
             $session_id = $this->soap->login($this->rcmail->config->get('remote_soap_user'), $this->rcmail->config->get('remote_soap_pass'));
-            $ispconfig_version = $this->soap->server_get_app_version($session_id);
-
-            if (!empty($id)) {
-                $mail_user = $this->soap->mail_user_get($session_id, ['login' => $this->rcmail->user->data['username']]);
-                // Alternatively also search the email field, this can differ from the login field for legacy reasons.
-                if (empty($mail_user)) {
-                    $mail_user = $this->soap->mail_user_get($session_id, ['email' => $this->rcmail->user->data['username']]);
+            
+            // Catch SOAP exception if method server_get_app_version() is not available.
+            try {
+                $ispconfig_version = $soap->server_get_app_version($session_id);
+                if (!empty($id)) {
+                    $mail_user = $this->soap->mail_user_get($session_id, ['login' => $this->rcmail->user->data['username']]);
+                    // Alternatively also search the email field, this can differ from the login field for legacy reasons.
+                    if (empty($mail_user)) {
+                        $mail_user = $this->soap->mail_user_get($session_id, ['email' => $this->rcmail->user->data['username']]);
+                    }
+    
+                    $filter = $this->soap->mail_user_filter_get($session_id, ['filter_id' => $id]);
+                    $mail_server = $this->soap->server_get($session_id, $mail_user[0]['server_id'], 'mail');
+                    $this->soap->logout($session_id);
+    
+                    $enabled = $filter[0]['active'];
+                    if ($filter[0]['mailuser_id'] != $mail_user[0]['mailuser_id']) {
+                        $this->rcmail->output->command('display_message', 'Error: ' . $this->gettext('opnotpermitted'), 'error');
+                        $enabled = 'n';
+                    }
+    
+                    $enabled = ($enabled == 'y') ? 1 : 0;
+    
+                    if ($mail_server['mail_filter_syntax'] == 'maildrop') {
+                        $filter[0]['target'] = "INBOX." . $filter[0]['target'];
+                    }
+    
+                    $filter[0]['target'] = mb_convert_encoding($filter[0]['target'], 'UTF7-IMAP', 'UTF-8');
                 }
-
-                $filter = $this->soap->mail_user_filter_get($session_id, ['filter_id' => $id]);
-                $mail_server = $this->soap->server_get($session_id, $mail_user[0]['server_id'], 'mail');
-                $this->soap->logout($session_id);
-
-                $enabled = $filter[0]['active'];
-                if ($filter[0]['mailuser_id'] != $mail_user[0]['mailuser_id']) {
-                    $this->rcmail->output->command('display_message', 'Error: ' . $this->gettext('opnotpermitted'), 'error');
-                    $enabled = 'n';
-                }
-
-                $enabled = ($enabled == 'y') ? 1 : 0;
-
-                if ($mail_server['mail_filter_syntax'] == 'maildrop') {
-                    $filter[0]['target'] = "INBOX." . $filter[0]['target'];
-                }
-
-                $filter[0]['target'] = mb_convert_encoding($filter[0]['target'], 'UTF7-IMAP', 'UTF-8');
+            }
+            catch(SoapFault $ignore) {
+                // Ignore SOAP exception and treat ISPConfig as > 3.1dev.
             }
         }
         catch (SoapFault $e) {
